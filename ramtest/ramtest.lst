@@ -1,6 +1,6 @@
                         
                         ;
-                        ; Xerox-820 DRAM Diagnostic
+                        ; Xerox-820 DRAM Diagnostic (rev1.1: don't stop on first fault)
                         ;
                         
    0030                 CRTPAG   EQU    30H                ; Where video RAM lives
@@ -105,246 +105,714 @@
    0020   ed b0                  LDIR                      ; block copy
                         
                                  ; write message to video line #1
-   0022   21 fc 00               LD      HL, MSG1          ; set HL to message start
+   0022   21 0f 04               LD      HL, MSG1          ; set HL to message start
    0025   11 00 30               LD      DE, LINE1         ; set DE to VRAM address
    0028   01 16 00               LD      BC, LEN1          ; message length
    002b   ed b0                  LDIR                      ; block copy
+                        
+                                 ; clear alternate registers
+   002d   08                     EX AF, AF'
+   002e   d9                     EXX
+   002f   af                     XOR A                     ; A' = 0
+   0030   57                     LD D, A                   ; D' = 0
+   0031   5f                     LD E, A                   ; E' = 0
+   0032   67                     LD H, A                   ; H' = 0
+   0033   6f                     LD L, A                   ; L' = 0
+   0034   d9                     EXX
+   0035   08                     EX AF, AF'                ; switch back
                         
                                  ; start of DRAM diagnostics
                         
                         ; -----------------------------------------------------------------------------
                         ; TEST_55 -- Write/Verify/ID for pattern 55h
                         ; -----------------------------------------------------------------------------
-   002d                 TEST_55:
-   002d   3e 55                  LD A, 55h
-   002f   57                     LD D, A                 ; D = expected pattern
-   0030   47                     LD B, A                 ; B = expected pattern
-   0031   21 00 3c               LD HL, RAM_LOW
+   0036                 TEST_55:
+   0036   3e 55                  LD A, 55h
+   0038   57                     LD D, A                 ; D = expected pattern
+   0039   47                     LD B, A                 ; B = expected pattern
+   003a   21 00 3c               LD HL, RAM_LOW
                         
-   0034                 WRITE_55:
-   0034   72                     LD (HL), D              ; write the pattern
-   0035   23                     INC HL
+   003d                 WRITE_55:
+   003d   72                     LD (HL), D              ; write the pattern
+   003e   23                     INC HL
                                  ; check if HL > RAM_TOP
-   0036   7c                     LD A, H
-   0037   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
-   0039   20 f9                  JR NZ, WRITE_55
-   003b   7d                     LD A, L
-   003c   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
-   003e   20 f4                  JR NZ, WRITE_55
+   003f   7c                     LD A, H
+   0040   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
+   0042   20 f9                  JR NZ, WRITE_55
+   0044   7d                     LD A, L
+   0045   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
+   0047   20 f4                  JR NZ, WRITE_55
                         
-                                 ; verify pattern
-   0040   21 00 3c               LD HL, RAM_LOW          ; reset address pointer
+                                 ; verify-pattern loop
+   0049   21 00 3c               LD HL, RAM_LOW          ; reset address pointer
+   004c   78            CHK_55:  LD A, B                 ; A = expected pattern
+   004d   be                     CP (HL)                 ; compare expected with actual
+   004e   20 33                  JR NZ, FAULT            ; jump on mismatch
                         
-   0043                 CHECK_55:
-   0043   78                     LD A, B                 ; A = expected pattern
-   0044   be                     CP (HL)                 ; compare expected with actual
-   0045   20 33                  JR NZ, FAULT_55         ; jump on mismatch
-   0047   23                     INC HL
-                            
-                                 ; check termination
-   0048   7c                     LD A, H
-   0049   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
-   004b   20 f6                  JR NZ, CHECK_55
-   004d   7d                     LD A, L
-   004e   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
-   0050   20 f1                  JR NZ, CHECK_55
+                                 ; check for verify-pattern loop termination
+   0050   23            CHK_5X:  INC HL
+   0051   7c                     LD A, H
+   0052   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
+   0054   20 f6                  JR NZ, CHK_55
+   0056   7d                     LD A, L
+   0057   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
+   0059   20 f1                  JR NZ, CHK_55
                         
                         ; -----------------------------------------------------------------------------
                         ; TEST_AA -- Write/Verify/ID for pattern AAh
                         ; -----------------------------------------------------------------------------
-   0052                 TEST_AA:
-   0052   3e aa                  LD A, 0AAh
-   0054   57                     LD D, A                 ; D = expected pattern
-   0055   47                     LD B, A                 ; B = expected pattern
-   0056   21 00 3c               LD HL, RAM_LOW
+   005b                 TEST_AA:
+   005b   3e aa                  LD A, 0AAh
+   005d   57                     LD D, A                 ; D = expected pattern
+   005e   47                     LD B, A                 ; B = expected pattern
+   005f   21 00 3c               LD HL, RAM_LOW
                         
-   0059                 WRITE_AA:
-   0059   72                     LD (HL), D              ; write the pattern
-   005a   23                     INC HL
+   0062                 WRITE_AA:
+   0062   72                     LD (HL), D              ; write the pattern
+   0063   23                     INC HL
                                  ; check if HL > RAM_TOP
-   005b   7c                     LD A, H
-   005c   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
-   005e   20 f9                  JR NZ, WRITE_AA
-   0060   7d                     LD A, L
-   0061   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
-   0063   20 f4                  JR NZ, WRITE_AA
+   0064   7c                     LD A, H
+   0065   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
+   0067   20 f9                  JR NZ, WRITE_AA
+   0069   7d                     LD A, L
+   006a   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
+   006c   20 f4                  JR NZ, WRITE_AA
                         
-                                 ; verify pattern
-   0065   21 00 3c               LD HL, RAM_LOW          ; reset address pointer
+                                 ; verify-pattern loop
+   006e   21 00 3c               LD HL, RAM_LOW          ; reset address pointer
+   0071   78            CHK_AA:  LD A, B                 ; A = expected pattern
+   0072   be                     CP (HL)                 ; compare expected with actual
+   0073   20 0e                  JR NZ, FAULT            ; jump on mismatch
                         
-   0068                 CHECK_AA:
-   0068   78                     LD A, B                 ; A = expected pattern
-   0069   be                     CP (HL)                 ; compare expected with actual
-   006a   20 33                  JR NZ, FAULT_AA         ; jump on mismatch
-   006c   23                     INC HL
-                            
-                                 ; check termination
-   006d   7c                     LD A, H
-   006e   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
-   0070   20 f6                  JR NZ, CHECK_AA
-   0072   7d                     LD A, L
-   0073   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
-   0075   20 f1                  JR NZ, CHECK_AA
+                                 ; check for verify-pattern loop termination
+   0075   23            CHK_AX:  INC HL
+   0076   7c                     LD A, H
+   0077   fe 00                  CP 0                    ; compare H with FFh+1 (00h)
+   0079   20 f6                  JR NZ, CHK_AA
+   007b   7d                     LD A, L
+   007c   fe 00                  CP 0                    ; compare L with FFh+1 (00h)
+   007e   20 f1                  JR NZ, CHK_AA
                         
-                                 ; success path
-   0077   c3 ee 00               JP SUCCESS_HALT         ; all tests passed
+   0080   c3 3d 02               JP REPORT               ; test complete jump to reporting
                         
                         ; -----------------------------------------------------------------------------
-                        ; FAULT_55
+                        ; FAULT -- found a fault
                         ; State on entry: HL = failing address, A = expected (55h), B = 55h
                         ; -----------------------------------------------------------------------------
-   007a                 FAULT_55:
-                                 ; Calculate the Error Mask
-   007a   7e                     LD A, (HL)              ; A = actual data
-   007b   a8                     XOR B                   ; A = actual XOR expected
-   007c   4f                     LD C, A                 ; C = error mask
-   007d   1e 07                  LD E,7
-   007f   cb 17         LOOP_55: RL A                    ; find the failing DRAM column
-   0081   38 03                  JR C, COLUMN_FOUND_55
-   0083   1d                     DEC E                   ; E = failing DRAM column
-   0084   18 f9                  JR LOOP_55
+   0083   7e            FAULT:   LD A, (HL)              ; A = actual data
+   0084   a8                     XOR B                   ; A = actual XOR expected
+   0085   4f                     LD C, A                 ; C = error mask
+   0086   1e 07                  LD E,7
                         
-   0086                 COLUMN_FOUND_55:
-                                 ; check A15 (bit 7)
-   0086   7c                     LD A, H                 ; A = high byte of failing address
-   0087   e6 80                  AND 80h                 
-   0089   28 09                  JR Z, CHECK_A14_55
+   0088   79            COL_LP:  LD A, C
+   0089   fe 00                  CP 0                    ; check if done
+   008b   28 08                  JR Z, COL_XX
+   008d   cb 27                  SLA A
+   008f   4f                     LD C, A
+   0090   38 0a                  JR C, GOT_COL
+   0092   1d                     DEC E                   ; E = failing DRAM column
+   0093   18 f3                  JR COL_LP
                         
-                                 ; A15 is set (row 3 or 2)
-   008b   16 02                  LD D, 2
-   008d   cb 74                  BIT 6, H                ; check A14 (bit 6 of H)
-   008f   28 0a                  JR Z, ROW_FOUND_55      ; if A14 is clear, it's row 2 (80h-BFh)
-   0091   14                     INC D                   ; row 3
-   0092   18 07                  JR ROW_FOUND_55
+   0095   78            COL_XX:  LD A, B
+   0096   fe 55                  CP 055h
+   0098   28 b6                  JR Z, CHK_5X            ; continue test with 55 pattern
+   009a   18 d9                  JR CHK_AX               ; continue test with AA pattern
                         
-   0094                 CHECK_A14_55:
-                                 ; A15 is clear (row 0 or 1)
-   0094   16 00                  LD D, 0
-   0096   cb 74                  BIT 6, H                ; check A14
-   0098   28 01                  JR Z, ROW_FOUND_55      ; if A14 is clear, it's row 0 (00h-3Fh)
-   009a   14                     INC D                   ; row 1
+   009c   7c            GOT_COL: LD A, H                 ; A = high byte of failing address
+   009d   e6 80                  AND 80h                 ; check A15 (bit 7)
+   009f   28 09                  JR Z, ROW_10
                         
-   009b                 ROW_FOUND_55:
-                                 ; D now contains the failing row (0-3)
-                                 ; final reporting
-   009b   7e                     LD A, (HL)              ; A = actual data
-   009c   c3 c1 00               JP ERROR_HALT           ; jump to final halt location
+   00a1   16 02         ROW_32:  LD D, 2                 ; A15 is set (row 3 or 2)
+   00a3   cb 74                  BIT 6, H                ; check A14 (bit 6 of H)
+   00a5   28 0a                  JR Z, WBMAP             ; if A14 is clear, it's row 2 (80h-BFh)
+   00a7   14                     INC D                   ; row 3
+   00a8   18 07                  JR WBMAP
+                        
+   00aa   16 00         ROW_10:  LD D, 0                 ; A15 is clear (row 2 or 0)
+   00ac   cb 74                  BIT 6, H                ; check A14
+   00ae   28 01                  JR Z, WBMAP             ; if A14 is clear, it's row 0 (00h-3Fh)
+   00b0   14                     INC D                   ; row 1
+                        
+                                 ; start of RAM fault bitmap section
+                        
+                                 ; write to 32-bit bitmap of faulting chips in DE',HL'
+                                 ; D = failing row (0-3)  E = failing column (0-7)
+   00b1   7a            WBMAP:   LD A, D
+   00b2   d9                     EXX
+   00b3   47                     LD B, A                 ; B' = D
+   00b4   d9                     EXX
+   00b5   7b                     LD A, E
+   00b6   d9                     EXX
+   00b7   4f                     LD C, A                 ; C' = E
+                        
+   00b8   08                     EX      AF, AF'         ; switch to alternate AF
+   00b9   3e ff                  LD      A, 0FFh         ; set error flag
+   00bb   08                     EX      AF, AF'         ; switch back
+                        
+                                 ; BC' has the failing row and col
+                                 ; Calculate the 5-bit chip index (0-31) = (row * 8) + col
+   00bc   78                     LD A, B                 ; A = row
+   00bd   cb 27                  SLA A                   ; A = row * 2
+   00bf   cb 27                  SLA A                   ; A = row * 4
+   00c1   cb 27                  SLA A                   ; A = row * 8
+   00c3   81                     ADD A, C                ; A = chip index (0-31)
+   00c4   47                     LD B, A                 ; B' holds the chip index (0-31)
+                        
+                                 ; Binary Split Logic (max 4 comparisons)
+                        
+   00c5   78            WBX1:    LD A, B                 ; A = chip index (0-31)
+   00c6   fe 10                  CP 16                   ; split 0-31 into 0-15 and 16-31
+   00c8   38 14                  JR C, WBX3
+                        
+                                 ; range 16-31
+   00ca   fe 18                  CP 24                   ; split 16-31 into 16-23 and 24-31
+   00cc   38 08                  JR C, WBX2
+                        
+                                 ; range 24-31
+   00ce   fe 1c                  CP 28                   ; split 24-31 into 24-27 and 28-31
+   00d0   da e6 01               JP C, WBP24             ; jump to WBP24 for range 24-27
+   00d3   c3 0f 02               JP WBP28                ; jump to WBP28 for range 28-31
+                        
+   00d6                 WBX2:    ; range 16-23
+   00d6   fe 14                  CP 20                   ; split 16-23 into 16-19 and 20-23
+   00d8   da 94 01               JP C, WBP16             ; jump to WBP16 for range 16-19
+   00db   c3 bd 01               JP WBP20                ; jump to WBP20 for range 20-23
+                        
+                                 ; range 0-15
+   00de   fe 08         WBX3:    CP 8                    ; split 0-15 into 0-7 and 8-15
+   00e0   38 07                  JR C, WBX4
+                        
+                                 ; range 8-15
+   00e2   fe 0c                  CP 12                   ; split 8-15 into 8-11 and 12-15
+   00e4   38 5c                  JR C, WBP8              ; jump to WBP8 for range 8-11
+   00e6   c3 6b 01               JP WBP12                ; jump to WBP12 for range 12-15
+                        
+                                 ; range 0-7
+   00e9   fe 04         WBX4:    CP 4                    ; split 0-7 into 0-3 and 4-7
+   00eb   38 03                  JR C, WBP0              ; jump to WBP0 for range 0-3
+   00ed   c3 19 01               JP WBP4                 ; jump to WBP4 for range 4-7
+                        
+                        ; Range 0-3
+                        
+   00f0   78            WBP0:    LD A, B
+   00f1   fe 00                  CP 0
+   00f3   20 07                  JR NZ, WBP1
+   00f5   7d                     LD A, L
+   00f6   f6 01                  OR 01h                  ; bit 0
+   00f8   6f                     LD L, A
+   00f9   c3 38 02               JP WBPXX
+                        
+   00fc   fe 01         WBP1:    CP 1
+   00fe   20 07                  JR NZ, WBP2
+   0100   7d                     LD A, L
+   0101   f6 02                  OR 02h                  ; bit 1
+   0103   6f                     LD L, A
+   0104   c3 38 02               JP WBPXX
+                        
+   0107   fe 02         WBP2:    CP 2
+   0109   20 07                  JR NZ, WBP3
+   010b   7d                     LD A, L
+   010c   f6 04                  OR 04h                  ; bit 2
+   010e   6f                     LD L, A
+   010f   c3 38 02               JP WBPXX
+                        
+   0112   7d            WBP3:    LD A, L
+   0113   f6 08                  OR 08h                  ; bit 3
+   0115   6f                     LD L, A
+   0116   c3 38 02               JP WBPXX
+                        
+                        ; Range 4-7
+                        
+   0119   78            WBP4:    LD A, B
+   011a   fe 04                  CP 4
+   011c   20 07                  JR NZ, WBP5
+   011e   7d                     LD A, L
+   011f   f6 10                  OR 10h                  ; bit 4
+   0121   6f                     LD L, A
+   0122   c3 38 02               JP WBPXX
+                        
+   0125   fe 05         WBP5:    CP 5
+   0127   20 07                  JR NZ, WBP6
+   0129   7d                     LD A, L
+   012a   f6 20                  OR 20h                  ; bit 5
+   012c   6f                     LD L, A
+   012d   c3 38 02               JP WBPXX
+                        
+   0130   fe 06         WBP6:    CP 6
+   0132   20 07                  JR NZ, WBP7
+   0134   7d                     LD A, L
+   0135   f6 40                  OR 40h                  ; bit 6
+   0137   6f                     LD L, A
+   0138   c3 38 02               JP WBPXX
+                        
+   013b   7d            WBP7:    LD A, L
+   013c   f6 80                  OR 80h                  ; bit 7
+   013e   6f                     LD L, A
+   013f   c3 38 02               JP WBPXX
+                        
+                        ; Range 8-11
+                        
+   0142   78            WBP8:    LD A, B
+   0143   fe 08                  CP 8
+   0145   20 07                  JR NZ, WBP9
+   0147   7c                     LD A, H
+   0148   f6 01                  OR 01h                  ; bit 8
+   014a   67                     LD H, A
+   014b   c3 38 02               JP WBPXX
+                        
+   014e   fe 09         WBP9:    CP 9
+   0150   20 07                  JR NZ, WBP10
+   0152   7c                     LD A, H
+   0153   f6 02                  OR 02h                  ; bit 9
+   0155   67                     LD H, A
+   0156   c3 38 02               JP WBPXX
+                        
+   0159   fe 0a         WBP10:   CP 10
+   015b   20 07                  JR NZ, WBP11
+   015d   7c                     LD A, H
+   015e   f6 04                  OR 04h                  ; bit 10
+   0160   67                     LD H, A
+   0161   c3 38 02               JP WBPXX
+                        
+   0164   7c            WBP11:   LD A, H                 ; B must be 11
+   0165   f6 08                  OR 08h                  ; bit 11
+   0167   67                     LD H, A
+   0168   c3 38 02               JP WBPXX
+                        
+                        ; Range 12-15
+                        
+   016b   78            WBP12:   LD A, B
+   016c   fe 0c                  CP 12
+   016e   20 07                  JR NZ, WBP13
+   0170   7c                     LD A, H
+   0171   f6 10                  OR 10h                  ; bit 12
+   0173   67                     LD H, A
+   0174   c3 38 02               JP WBPXX
+                        
+   0177   fe 0d         WBP13:   CP 13
+   0179   20 07                  JR NZ, WBP14
+   017b   7c                     LD A, H
+   017c   f6 20                  OR 20h                  ; bit 13
+   017e   67                     LD H, A
+   017f   c3 38 02               JP WBPXX
+                        
+   0182   fe 0e         WBP14:   CP 14
+   0184   20 07                  JR NZ, WBP15
+   0186   7c                     LD A, H
+   0187   f6 40                  OR 40h                  ; bit 14
+   0189   67                     LD H, A
+   018a   c3 38 02               JP WBPXX
+                        
+   018d   7c            WBP15:   LD A, H                 ; B must be 15
+   018e   f6 80                  OR 80h                  ; bit 15
+   0190   67                     LD H, A
+   0191   c3 38 02               JP WBPXX
+                        
+                        ; Range 16-19
+                        
+   0194   78            WBP16:   LD A, B
+   0195   fe 10                  CP 16
+   0197   20 07                  JR NZ, WBP17
+   0199   7b                     LD A, E
+   019a   f6 01                  OR 01h                  ; bit 16
+   019c   5f                     LD E, A
+   019d   c3 38 02               JP WBPXX
+                        
+   01a0   fe 11         WBP17:   CP 17
+   01a2   20 07                  JR NZ, WBP18
+   01a4   7b                     LD A, E
+   01a5   f6 02                  OR 02h                  ; bit 17
+   01a7   5f                     LD E, A
+   01a8   c3 38 02               JP WBPXX
+                        
+   01ab   fe 12         WBP18:   CP 18
+   01ad   20 07                  JR NZ, WBP19
+   01af   7b                     LD A, E
+   01b0   f6 04                  OR 04h                  ; bit 18
+   01b2   5f                     LD E, A
+   01b3   c3 38 02               JP WBPXX
+                        
+   01b6   7b            WBP19:   LD A, E                 ; B must be 19
+   01b7   f6 08                  OR 08h                  ; bit 19
+   01b9   5f                     LD E, A
+   01ba   c3 38 02               JP WBPXX
+                        
+                        ; Range 20-23
+                        
+   01bd   78            WBP20:   LD A, B
+   01be   fe 14                  CP 20
+   01c0   20 07                  JR NZ, WBP21
+   01c2   7b                     LD A, E
+   01c3   f6 10                  OR 10h                  ; bit 20
+   01c5   5f                     LD E, A
+   01c6   c3 38 02               JP WBPXX
+                        
+   01c9   fe 15         WBP21:   CP 21
+   01cb   20 07                  JR NZ, WBP22
+   01cd   7b                     LD A, E
+   01ce   f6 20                  OR 20h                  ; bit 21
+   01d0   5f                     LD E, A
+   01d1   c3 38 02               JP WBPXX
+                        
+   01d4   fe 16         WBP22:   CP 22
+   01d6   20 07                  JR NZ, WBP23
+   01d8   7b                     LD A, E
+   01d9   f6 40                  OR 40h                  ; bit 22
+   01db   5f                     LD E, A
+   01dc   c3 38 02               JP WBPXX
+                        
+   01df   7b            WBP23:   LD A, E                 ; B must be 23
+   01e0   f6 80                  OR 80h                  ; bit 23
+   01e2   5f                     LD E, A
+   01e3   c3 38 02               JP WBPXX
+                        
+                        ; Range 24-27
+                        
+   01e6   78            WBP24:   LD A, B
+   01e7   fe 18                  CP 24
+   01e9   20 07                  JR NZ, WBP25
+   01eb   7a                     LD A, D
+   01ec   f6 01                  OR 01h                  ; bit 24
+   01ee   57                     LD D, A
+   01ef   c3 38 02               JP WBPXX
+                        
+   01f2   fe 19         WBP25:   CP 25
+   01f4   20 07                  JR NZ, WBP26
+   01f6   7a                     LD A, D
+   01f7   f6 02                  OR 02h                  ; bit 25
+   01f9   57                     LD D, A
+   01fa   c3 38 02               JP WBPXX
+                        
+   01fd   fe 1a         WBP26:   CP 26
+   01ff   20 07                  JR NZ, WBP27
+   0201   7a                     LD A, D
+   0202   f6 04                  OR 04h                  ; bit 26
+   0204   57                     LD D, A
+   0205   c3 38 02               JP WBPXX
+                        
+   0208   7a            WBP27:   LD A, D                 ; B must be 27
+   0209   f6 08                  OR 08h                  ; bit 27
+   020b   57                     LD D, A
+   020c   c3 38 02               JP WBPXX
+                        
+                        ; Range 28-31
+                        
+   020f   78            WBP28:   LD A, B
+   0210   fe 1c                  CP 28
+   0212   20 07                  JR NZ, WBP29
+   0214   7a                     LD A, D
+   0215   f6 10                  OR 10h                  ; bit 28
+   0217   57                     LD D, A
+   0218   c3 38 02               JP WBPXX
+                        
+   021b   fe 1d         WBP29:   CP 29
+   021d   20 07                  JR NZ, WBP30
+   021f   7a                     LD A, D
+   0220   f6 20                  OR 20h                  ; bit 29
+   0222   57                     LD D, A
+   0223   c3 38 02               JP WBPXX
+                        
+   0226   fe 1e         WBP30:   CP 30
+   0228   20 07                  JR NZ, WBP31
+   022a   7a                     LD A, D
+   022b   f6 40                  OR 40h                  ; bit 30
+   022d   57                     LD D, A
+   022e   c3 38 02               JP WBPXX
+                        
+   0231   7a            WBP31:   LD A, D                 ; B must be 31
+   0232   f6 80                  OR 80h                  ; bit 31
+   0234   57                     LD D, A
+   0235   c3 38 02               JP WBPXX
+                        
+                                 ; end of RAM fault bitmap section
+                        
+   0238   d9            WBPXX:   EXX                     ; Swap back
+   0239   1d                     DEC E                   ; E = failing DRAM column
+   023a   c3 88 00               JP COL_LP               ; continue searching columns
                         
                         ; -----------------------------------------------------------------------------
-                        ; FAULT_AA
-                        ; State on entry: HL = failing address, A = expected (AAh), B = AAh
+                        ; REPORT -- use DE' HL' bitmap to generate a final report
                         ; -----------------------------------------------------------------------------
-   009f                 FAULT_AA:
-                                 ; Calculate the Error Mask
-   009f   7e                     LD A, (HL)              ; A = actual data
-   00a0   a8                     XOR B                   ; A = actual XOR expected
-   00a1   4f                     LD C, A                 ; C = error mask
-   00a2   1e 07                  LD E,7
-   00a4   cb 17         LOOP_AA: RL A                    ; find the failing DRAM column
-   00a6   38 03                  JR C, COLUMN_FOUND_AA
-   00a8   1d                     DEC E                   ; E = failing DRAM column
-   00a9   18 f9                  JR LOOP_AA
+   023d   08            REPORT:  EX AF, AF'              ; check A'
+   023e   b7                     OR A                    ; check if A' is zero (no error)
+   023f   ca 00 04               JP Z, SUCCESS           ; the test passed if A'=0
                         
-   00ab                 COLUMN_FOUND_AA:
-                                 ; check A15 (bit 7)
-   00ab   7c                     LD A, H                 ; A = high byte of failing address
-   00ac   e6 80                  AND 80h                 
-   00ae   28 09                  JR Z, CHECK_A14_AA
+   0242   08                     EX AF, AF'              ; restore AF
+   0243   d9            FNL3X:   EXX
+   0244   7a                     LD A, D
+   0245   d9                     EXX
+   0246   11 80 30               LD DE, LINE2            ; DE = VRAM destination (start of line 2)
                         
-                                 ; A15 is set (row 3 or 2)
-   00b0   16 02                  LD D, 2
-   00b2   cb 74                  BIT 6, H                ; check A14 (bit 6 of H)
-   00b4   28 0a                  JR Z, ROW_FOUND_AA      ; if A14 is clear, it's row 2 (80h-BFh)
-   00b6   14                     INC D                   ; row 3
-   00b7   18 07                  JR ROW_FOUND_AA
+   0249   cb 7f         FNL37:   BIT 7, A
+   024b   28 09                  JR Z, FNL36
+   024d   21 85 04               LD HL, MSG_37           ; HL = pointer to message
+   0250   01 02 00               LD BC, 2                ; BC = message length
+   0253   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0255   13                     INC DE
                         
-   00b9                 CHECK_A14_AA:
-                                 ; A15 is clear (row 0 or 1)
-   00b9   16 00                  LD D, 0
-   00bb   cb 74                  BIT 6, H                ; check A14
-   00bd   28 01                  JR Z, ROW_FOUND_AA      ; if A14 is clear, it's row 0 (00h-3Fh)
-   00bf   14                     INC D                   ; row 1
+   0256   cb 77         FNL36:   BIT 6, A
+   0258   28 09                  JR Z, FNL35
+   025a   21 82 04               LD HL, MSG_36           ; HL = pointer to message
+   025d   01 02 00               LD BC, 2                ; BC = message length
+   0260   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0262   13                     INC DE
                         
-   00c0                 ROW_FOUND_AA:
-                                 ; D now contains the failing row (0-3)
-                                 ; final reporting
-   00c0   7e                     LD A, (HL)              ; A = actual data
+   0263   cb 6f         FNL35:   BIT 5, A
+   0265   28 09                  JR Z, FNL34
+   0267   21 7f 04               LD HL, MSG_35           ; HL = pointer to message
+   026a   01 02 00               LD BC, 2                ; BC = message length
+   026d   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   026f   13                     INC DE
                         
-   00c1                 ERROR_HALT:
+   0270   cb 67         FNL34:   BIT 4, A
+   0272   28 09                  JR Z, FNL33
+   0274   21 7c 04               LD HL, MSG_34           ; HL = pointer to message
+   0277   01 02 00               LD BC, 2                ; BC = message length
+   027a   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   027c   13                     INC DE
                         
-                        ; -----------------------------------------------------------------------------
-                        ;        Register Values on HALT
-                        ;
-                        ;        HL = failing memory address
-                        ;        A  = actual data read (failing value)
-                        ;        B  = expected data (the pattern being verified)
-                        ;        D  = failing DRAM row (0-3)
-                        ;        E  = failing DRAM column (0-7, corresponds to D0-D7)
-                        ;        C  = error mask (expected XOR actual)
-                        ;
-                        ; -----------------------------------------------------------------------------
+   027d   cb 5f         FNL33:   BIT 3, A
+   027f   28 09                  JR Z, FNL32
+   0281   21 79 04               LD HL, MSG_33           ; HL = pointer to message
+   0284   01 02 00               LD BC, 2                ; BC = message length
+   0287   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0289   13                     INC DE
                         
-                                 ; calculate the chip ID message index
-   00c1   7a                     LD A, D                 ; A = row
-   00c2   cb 27                  SLA A
-   00c4   cb 27                  SLA A
-   00c6   cb 27                  SLA A                   ; A = row * 8
-   00c8   83                     ADD A, E                ; A = (row * 8) + col
+   028a   cb 57         FNL32:   BIT 2, A
+   028c   28 09                  JR Z, FNL31
+   028e   21 76 04               LD HL, MSG_32           ; HL = pointer to message
+   0291   01 02 00               LD BC, 2                ; BC = message length
+   0294   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0296   13                     INC DE
                         
-                                 ; lookup the chip ID message address
-   00c9   6f                     LD L, A                 ; L = Index
-   00ca   26 00                  LD H, 0                 ; HL = Index (16-bit index value)
-   00cc   cb 25                  SLA L                   ; L = Index * 2
-   00ce   cb 14                  RL H                    ; HL = Index * 2 (word index offset)
-                                 
-   00d0   11 22 01               LD DE, MSG_ADDR_TABLE   ; DE = pointer to address table
-   00d3   19                     ADD HL, DE              ; HL = address table address + Index*2
-                                 
-                                 ; load HL with the chip ID message address
-   00d4   5e                     LD E, (HL)              ; E = low byte of message address
-   00d5   23                     INC HL
-   00d6   56                     LD D, (HL)              ; D = high byte of message address
-   00d7   eb                     EX DE, HL               ; HL = message address
-                                 
-                                 ; write chip ID message to VRAM
-   00d8   01 03 00               LD BC, 3                ; BC = 3 (fixed message length)
-   00db   11 80 30               LD DE, LINE2            ; DE = VRAM destination (start of line 2)
-   00de   ed b0                  LDIR                    ; block copy: (HL) to (DE), length BC.
+   0297   cb 4f         FNL31:   BIT 1, A
+   0299   28 09                  JR Z, FNL30
+   029b   21 73 04               LD HL, MSG_31           ; HL = pointer to message
+   029e   01 02 00               LD BC, 2                ; BC = message length
+   02a1   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   02a3   13                     INC DE
                         
-                                 ; write ERROR message to VRAM
-   00e0   21 1d 01               LD      HL, MSG_ERR     ; set HL to message start
-   00e3   11 85 30               LD      DE, LINE2+5     ; set DE to VRAM address
-   00e6   01 05 00               LD      BC, LEN_ERR     ; message length
-   00e9   ed b0                  LDIR                    ; block copy
-   00eb   c3 eb 00               JP      $               ; null loop
+   02a4   cb 47         FNL30:   BIT 0, A
+   02a6   28 09                  JR Z, FNL2X
+   02a8   21 70 04               LD HL, MSG_30           ; HL = pointer to message
+   02ab   01 02 00               LD BC, 2                ; BC = message length
+   02ae   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   02b0   13                     INC DE
                         
-   00ee                 SUCCESS_HALT:
-                                 ; write PASSED message to VRAM
-   00ee   21 12 01               LD      HL, MSG_OK      ; set HL to message start
-   00f1   11 80 30               LD      DE, LINE2       ; set DE to VRAM address
-   00f4   01 0b 00               LD      BC, LEN_OK      ; message length
-   00f7   ed b0                  LDIR                    ; block copy
-   00f9   c3 f9 00               JP      $               ; null loop
+   02b1   d9            FNL2X:   EXX
+   02b2   7b                     LD A, E
+   02b3   d9                     EXX
+                        
+   02b4   cb 7f         FNL27:   BIT 7, A
+   02b6   28 09                  JR Z, FNL26
+   02b8   21 9d 04               LD HL, MSG_27           ; HL = pointer to message
+   02bb   01 03 00               LD BC, 3                ; BC = message length
+   02be   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   02c0   13                     INC DE
+                        
+   02c1   cb 77         FNL26:   BIT 6, A
+   02c3   28 09                  JR Z, FNL25
+   02c5   21 9a 04               LD HL, MSG_26           ; HL = pointer to message
+   02c8   01 03 00               LD BC, 3                ; BC = message length
+   02cb   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   02cd   13                     INC DE
+                        
+   02ce   cb 6f         FNL25:   BIT 5, A
+   02d0   28 09                  JR Z, FNL24
+   02d2   21 97 04               LD HL, MSG_25           ; HL = pointer to message
+   02d5   01 03 00               LD BC, 3                ; BC = message length
+   02d8   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   02da   13                     INC DE
+                        
+   02db   cb 67         FNL24:   BIT 4, A
+   02dd   28 09                  JR Z, FNL23
+   02df   21 94 04               LD HL, MSG_24           ; HL = pointer to message
+   02e2   01 03 00               LD BC, 3                ; BC = message length
+   02e5   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   02e7   13                     INC DE
+                        
+   02e8   cb 5f         FNL23:   BIT 3, A
+   02ea   28 09                  JR Z, FNL22
+   02ec   21 91 04               LD HL, MSG_23           ; HL = pointer to message
+   02ef   01 03 00               LD BC, 3                ; BC = message length
+   02f2   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   02f4   13                     INC DE
+                        
+   02f5   cb 57         FNL22:   BIT 2, A
+   02f7   28 09                  JR Z, FNL21
+   02f9   21 8e 04               LD HL, MSG_22           ; HL = pointer to message
+   02fc   01 03 00               LD BC, 3                ; BC = message length
+   02ff   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0301   13                     INC DE
+                        
+   0302   cb 4f         FNL21:   BIT 1, A
+   0304   28 09                  JR Z, FNL20
+   0306   21 8b 04               LD HL, MSG_21           ; HL = pointer to message
+   0309   01 03 00               LD BC, 3                ; BC = message length
+   030c   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   030e   13                     INC DE
+                        
+   030f   cb 47         FNL20:   BIT 0, A
+   0311   28 09                  JR Z, FNL1X
+   0313   21 88 04               LD HL, MSG_20           ; HL = pointer to message
+   0316   01 03 00               LD BC, 3                ; BC = message length
+   0319   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   031b   13                     INC DE
+                        
+   031c   d9            FNL1X:   EXX
+   031d   7c                     LD A, H
+   031e   d9                     EXX
+                        
+   031f   cb 7f         FNL17:   BIT 7, A
+   0321   28 09                  JR Z, FNL16
+   0323   21 b5 04               LD HL, MSG_17           ; HL = pointer to message
+   0326   01 03 00               LD BC, 3                ; BC = message length
+   0329   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   032b   13                     INC DE
+                        
+   032c   cb 77         FNL16:   BIT 6, A
+   032e   28 09                  JR Z, FNL15
+   0330   21 b2 04               LD HL, MSG_16           ; HL = pointer to message
+   0333   01 03 00               LD BC, 3                ; BC = message length
+   0336   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0338   13                     INC DE
+                        
+   0339   cb 6f         FNL15:   BIT 5, A
+   033b   28 09                  JR Z, FNL14
+   033d   21 af 04               LD HL, MSG_15           ; HL = pointer to message
+   0340   01 03 00               LD BC, 3                ; BC = message length
+   0343   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0345   13                     INC DE
+                        
+   0346   cb 67         FNL14:   BIT 4, A
+   0348   28 09                  JR Z, FNL13
+   034a   21 ac 04               LD HL, MSG_14           ; HL = pointer to message
+   034d   01 03 00               LD BC, 3                ; BC = message length
+   0350   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0352   13                     INC DE
+                        
+   0353   cb 5f         FNL13:   BIT 3, A
+   0355   28 09                  JR Z, FNL12
+   0357   21 a9 04               LD HL, MSG_13           ; HL = pointer to message
+   035a   01 03 00               LD BC, 3                ; BC = message length
+   035d   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   035f   13                     INC DE
+                        
+   0360   cb 57         FNL12:   BIT 2, A
+   0362   28 09                  JR Z, FNL11
+   0364   21 a6 04               LD HL, MSG_12           ; HL = pointer to message
+   0367   01 03 00               LD BC, 3                ; BC = message length
+   036a   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   036c   13                     INC DE
+                        
+   036d   cb 4f         FNL11:   BIT 1, A
+   036f   28 09                  JR Z, FNL10
+   0371   21 a3 04               LD HL, MSG_11           ; HL = pointer to message
+   0374   01 03 00               LD BC, 3                ; BC = message length
+   0377   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0379   13                     INC DE
+                        
+   037a   cb 47         FNL10:   BIT 0, A
+   037c   28 09                  JR Z, FNL0X
+   037e   21 a0 04               LD HL, MSG_10           ; HL = pointer to message
+   0381   01 03 00               LD BC, 3                ; BC = message length
+   0384   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0386   13                     INC DE
+                        
+   0387   d9            FNL0X:   EXX
+   0388   7d                     LD A, L
+   0389   d9                     EXX
+                        
+   038a   cb 7f         FNL07:   BIT 7, A
+   038c   28 09                  JR Z, FNL06
+   038e   21 cd 04               LD HL, MSG_07           ; HL = pointer to message
+   0391   01 03 00               LD BC, 3                ; BC = message length
+   0394   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   0396   13                     INC DE
+                        
+   0397   cb 77         FNL06:   BIT 6, A
+   0399   28 09                  JR Z, FNL05
+   039b   21 ca 04               LD HL, MSG_06           ; HL = pointer to message
+   039e   01 03 00               LD BC, 3                ; BC = message length
+   03a1   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   03a3   13                     INC DE
+                        
+   03a4   cb 6f         FNL05:   BIT 5, A
+   03a6   28 09                  JR Z, FNL04
+   03a8   21 c7 04               LD HL, MSG_05           ; HL = pointer to message
+   03ab   01 03 00               LD BC, 3                ; BC = message length
+   03ae   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   03b0   13                     INC DE
+                        
+   03b1   cb 67         FNL04:   BIT 4, A
+   03b3   28 09                  JR Z, FNL03
+   03b5   21 c4 04               LD HL, MSG_04           ; HL = pointer to message
+   03b8   01 03 00               LD BC, 3                ; BC = message length
+   03bb   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   03bd   13                     INC DE
+                        
+   03be   cb 5f         FNL03:   BIT 3, A
+   03c0   28 09                  JR Z, FNL02
+   03c2   21 c1 04               LD HL, MSG_03           ; HL = pointer to message
+   03c5   01 03 00               LD BC, 3                ; BC = message length
+   03c8   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   03ca   13                     INC DE
+                        
+   03cb   cb 57         FNL02:   BIT 2, A
+   03cd   28 09                  JR Z, FNL01
+   03cf   21 be 04               LD HL, MSG_02           ; HL = pointer to message
+   03d2   01 03 00               LD BC, 3                ; BC = message length
+   03d5   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   03d7   13                     INC DE
+                        
+   03d8   cb 4f         FNL01:   BIT 1, A
+   03da   28 09                  JR Z, FNL00
+   03dc   21 bb 04               LD HL, MSG_01           ; HL = pointer to message
+   03df   01 03 00               LD BC, 3                ; BC = message length
+   03e2   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   03e4   13                     INC DE
+                        
+   03e5   cb 47         FNL00:   BIT 0, A
+   03e7   28 09                  JR Z, FNLXX
+   03e9   21 b8 04               LD HL, MSG_00           ; HL = pointer to message
+   03ec   01 03 00               LD BC, 3                ; BC = message length
+   03ef   ed b0                  LDIR                    ; block copy: (HL) to (DE)
+   03f1   13                     INC DE
+                        
+   03f2   21 2b 04      FNLXX:   LD HL, MSG_ERR          ; set HL to message start
+   03f5   11 17 30               LD  DE, LINE1+23        ; set DE to VRAM address
+   03f8   01 05 00               LD BC, LEN_ERR          ; message length
+   03fb   ed b0                  LDIR                    ; block copy
+   03fd   c3 fd 03               JP $                    ; null loop
+                        
+   0400                 SUCCESS:
+   0400   08                     EX AF, AF'              ; restore AF
+   0401   21 25 04               LD  HL, MSG_OK          ; set HL to message start
+   0404   11 17 30               LD  DE, LINE1+23        ; set DE to VRAM address
+   0407   01 06 00               LD  BC, LEN_OK          ; message length
+   040a   ed b0                  LDIR                    ; block copy
+   040c   c3 0c 04               JP $                    ; null loop
                         
                                  ; end of program
                         
-                                 ; start of messages
+                        ; -----------------------------------------------------------------------------
+                        ; MESSAGE DATA
+                        ; -----------------------------------------------------------------------------
                         
-   00fc   58 45 52 4f   MSG1:    DB      'XEROX-820 -- DRAM TEST'
-   0100   58 2d 38 32   
-   0104   30 20 2d 2d   
-   0108   20 44 52 41   
-   010c   4d 20 54 45   
-   0110   53 54         
+   040f   58 45 52 4f   MSG1:    DB      'XEROX-820 -- DRAM TEST'
+   0413   58 2d 38 32   
+   0417   30 20 2d 2d   
+   041b   20 44 52 41   
+   041f   4d 20 54 45   
+   0423   53 54         
    0016                 LEN1     EQU     $ - MSG1
                         
-   0112   54 45 53 54   MSG_OK:  DB      'TEST PASSED'
-   0116   20 50 41 53   
-   011a   53 45 44      
-   000b                 LEN_OK   EQU     $ - MSG_OK
+   0425   50 41 53 53   MSG_OK:  DB      'PASSED'
+   0429   45 44         
+   0006                 LEN_OK   EQU     $ - MSG_OK
                         
-   011d   45 52 52 4f   MSG_ERR: DB      'ERROR'
-   0121   52            
+   042b   45 52 52 4f   MSG_ERR: DB      'ERROR'
+   042f   52            
    0005                 LEN_ERR  EQU     $ - MSG_ERR
                         
                         ; -----------------------------------------------------------------------------
@@ -361,166 +829,117 @@
                         
                         ; Message table ordered by row and column
                         
-   0122                 MSG_ADDR_TABLE:
-   0122   aa 01 ad 01            DW MSG_00, MSG_01, MSG_02, MSG_03, MSG_04, MSG_05, MSG_06, MSG_07
-   0126   b0 01 b3 01   
-   012a   b6 01 b9 01   
-   012e   bc 01 bf 01   
-   0132   92 01 95 01            DW MSG_10, MSG_11, MSG_12, MSG_13, MSG_14, MSG_15, MSG_16, MSG_17
-   0136   98 01 9b 01   
-   013a   9e 01 a1 01   
-   013e   a4 01 a7 01   
-   0142   7a 01 7d 01            DW MSG_20, MSG_21, MSG_22, MSG_23, MSG_24, MSG_25, MSG_26, MSG_27
-   0146   80 01 83 01   
-   014a   86 01 89 01   
-   014e   8c 01 8f 01   
-   0152   62 01 65 01            DW MSG_30, MSG_31, MSG_32, MSG_33, MSG_34, MSG_35, MSG_36, MSG_37
-   0156   68 01 6b 01   
-   015a   6e 01 71 01   
-   015e   74 01 77 01   
+   0430                 MSG_ADDR_TABLE:
+   0430   b8 04 bb 04            DW MSG_00, MSG_01, MSG_02, MSG_03, MSG_04, MSG_05, MSG_06, MSG_07
+   0434   be 04 c1 04   
+   0438   c4 04 c7 04   
+   043c   ca 04 cd 04   
+   0440   a0 04 a3 04            DW MSG_10, MSG_11, MSG_12, MSG_13, MSG_14, MSG_15, MSG_16, MSG_17
+   0444   a6 04 a9 04   
+   0448   ac 04 af 04   
+   044c   b2 04 b5 04   
+   0450   88 04 8b 04            DW MSG_20, MSG_21, MSG_22, MSG_23, MSG_24, MSG_25, MSG_26, MSG_27
+   0454   8e 04 91 04   
+   0458   94 04 97 04   
+   045c   9a 04 9d 04   
+   0460   70 04 73 04            DW MSG_30, MSG_31, MSG_32, MSG_33, MSG_34, MSG_35, MSG_36, MSG_37
+   0464   76 04 79 04   
+   0468   7c 04 7f 04   
+   046c   82 04 85 04   
                         
                         ; DRAM chip IDs for range C000h -> FFFFh
                         
-   0162   55 38 20      MSG_30:  DB      'U8 '
-   0003                 LEN_30   EQU     $ - MSG_30
-                        
-   0165   55 37 20      MSG_31:  DB      'U7 '
-   0003                 LEN_31   EQU     $ - MSG_31
-                        
-   0168   55 36 20      MSG_32:  DB      'U6 '
-   0003                 LEN_32   EQU     $ - MSG_32
-                        
-   016b   55 35 20      MSG_33:  DB      'U5 '
-   0003                 LEN_33   EQU     $ - MSG_33
-                        
-   016e   55 34 20      MSG_34:  DB      'U4 '
-   0003                 LEN_34   EQU     $ - MSG_34
-                        
-   0171   55 33 20      MSG_35:  DB      'U3 '
-   0003                 LEN_35   EQU     $ - MSG_35
-                        
-   0174   55 32 20      MSG_36:  DB      'U2 '
-   0003                 LEN_36   EQU     $ - MSG_36
-                        
-   0177   55 31 20      MSG_37:  DB      'U1 '
-   0003                 LEN_37   EQU     $ - MSG_37
+   0470   55 38 20      MSG_30:  DB      'U8 '
+   0473   55 37 20      MSG_31:  DB      'U7 '
+   0476   55 36 20      MSG_32:  DB      'U6 '
+   0479   55 35 20      MSG_33:  DB      'U5 '
+   047c   55 34 20      MSG_34:  DB      'U4 '
+   047f   55 33 20      MSG_35:  DB      'U3 '
+   0482   55 32 20      MSG_36:  DB      'U2 '
+   0485   55 31 20      MSG_37:  DB      'U1 '
                         
                         ; DRAM chip IDs for range 8000h -> BFFFh
                         
-   017a   55 32 34      MSG_20:  DB      'U24'
-   0003                 LEN_20   EQU     $ - MSG_20
-                        
-   017d   55 32 33      MSG_21:  DB      'U23'
-   0003                 LEN_21   EQU     $ - MSG_21
-                        
-   0180   55 32 32      MSG_22:  DB      'U22'
-   0003                 LEN_22   EQU     $ - MSG_22
-                        
-   0183   55 32 31      MSG_23:  DB      'U21'
-   0003                 LEN_23   EQU     $ - MSG_23
-                        
-   0186   55 32 30      MSG_24:  DB      'U20'
-   0003                 LEN_24   EQU     $ - MSG_24
-                        
-   0189   55 31 39      MSG_25:  DB      'U19'
-   0003                 LEN_25   EQU     $ - MSG_25
-                        
-   018c   55 31 38      MSG_26:  DB      'U18'
-   0003                 LEN_26   EQU     $ - MSG_26
-                        
-   018f   55 31 37      MSG_27:  DB      'U17'
-   0003                 LEN_27   EQU     $ - MSG_27
+   0488   55 32 34      MSG_20:  DB      'U24'
+   048b   55 32 33      MSG_21:  DB      'U23'
+   048e   55 32 32      MSG_22:  DB      'U22'
+   0491   55 32 31      MSG_23:  DB      'U21'
+   0494   55 32 30      MSG_24:  DB      'U20'
+   0497   55 31 39      MSG_25:  DB      'U19'
+   049a   55 31 38      MSG_26:  DB      'U18'
+   049d   55 31 37      MSG_27:  DB      'U17'
                         
                         ; DRAM chip IDs for range 4000h -> 7FFFh
                         
-   0192   55 34 34      MSG_10:  DB      'U44'
-   0003                 LEN_10   EQU     $ - MSG_10
-                        
-   0195   55 34 33      MSG_11:  DB      'U43'
-   0003                 LEN_11   EQU     $ - MSG_11
-                        
-   0198   55 34 32      MSG_12:  DB      'U42'
-   0003                 LEN_12   EQU     $ - MSG_12
-                        
-   019b   55 34 31      MSG_13:  DB      'U41'
-   0003                 LEN_13   EQU     $ - MSG_13
-                        
-   019e   55 34 30      MSG_14:  DB      'U40'
-   0003                 LEN_14   EQU     $ - MSG_14
-                        
-   01a1   55 33 39      MSG_15:  DB      'U39'
-   0003                 LEN_15   EQU     $ - MSG_15
-                        
-   01a4   55 33 38      MSG_16:  DB      'U38'
-   0003                 LEN_16   EQU     $ - MSG_16
-                        
-   01a7   55 33 37      MSG_17:  DB      'U37'
-   0003                 LEN_17   EQU     $ - MSG_17
+   04a0   55 34 34      MSG_10:  DB      'U44'
+   04a3   55 34 33      MSG_11:  DB      'U43'
+   04a6   55 34 32      MSG_12:  DB      'U42'
+   04a9   55 34 31      MSG_13:  DB      'U41'
+   04ac   55 34 30      MSG_14:  DB      'U40'
+   04af   55 33 39      MSG_15:  DB      'U39'
+   04b2   55 33 38      MSG_16:  DB      'U38'
+   04b5   55 33 37      MSG_17:  DB      'U37'
                         
                         ; DRAM chip IDs for range 0000h -> 3FFFh
                         
-   01aa   55 36 31      MSG_00:  DB      'U61'
-   0003                 LEN_00   EQU     $ - MSG_00
-                        
-   01ad   55 36 30      MSG_01:  DB      'U60'
-   0003                 LEN_01   EQU     $ - MSG_01
-                        
-   01b0   55 35 39      MSG_02:  DB      'U59'
-   0003                 LEN_02   EQU     $ - MSG_02
-                        
-   01b3   55 35 38      MSG_03:  DB      'U58'
-   0003                 LEN_03   EQU     $ - MSG_03
-                        
-   01b6   55 35 37      MSG_04:  DB      'U57'
-   0003                 LEN_04   EQU     $ - MSG_04
-                        
-   01b9   55 35 36      MSG_05:  DB      'U56'
-   0003                 LEN_05   EQU     $ - MSG_05
-                        
-   01bc   55 35 35      MSG_06:  DB      'U55'
-   0003                 LEN_06   EQU     $ - MSG_06
-                        
-   01bf   55 35 34      MSG_07:  DB      'U54'
-   0003                 LEN_07   EQU     $ - MSG_07
+   04b8   55 36 31      MSG_00:  DB      'U61'
+   04bb   55 36 30      MSG_01:  DB      'U60'
+   04be   55 35 39      MSG_02:  DB      'U59'
+   04c1   55 35 38      MSG_03:  DB      'U58'
+   04c4   55 35 37      MSG_04:  DB      'U57'
+   04c7   55 35 36      MSG_05:  DB      'U56'
+   04ca   55 35 35      MSG_06:  DB      'U55'
+   04cd   55 35 34      MSG_07:  DB      'U54'
                         
                                  ; end of messages
                         
-   01c2                          END
+   04d0                          END
 0000  B0            0001  B1            0002  B2            0003  B3        
 0004  B4            0005  B5            0006  B6            0007  B7        
 0000  BRG.A         000c  BRG.B         0000  BRG.C         0007  CH.BEL    
 0008  CH.BS         0018  CH.CAN        000d  CH.CR         0020  CH.CTL    
 0004  CH.EOT        001b  CH.ESC        000c  CH.FF         0009  CH.HT     
-000a  CH.LF         0020  CH.SPC        001a  CH.SUB        0043  CHECK_55  
-0094  CHECK_A14_55    00b9  CHECK_A14_AA    0068  CHECK_AA      0086  COLUMN_FOUND_55
-00ab  COLUMN_FOUND_AA    0014  CRT.SC        0030  CRTPAG        3000  CRTRAM    
+000a  CH.LF         0020  CH.SPC        001a  CH.SUB        004c  CHK_55    
+0050  CHK_5X        0071  CHK_AA        0075  CHK_AX        0088  COL_LP    
+0095  COL_XX        0014  CRT.SC        0030  CRTPAG        3000  CRTRAM    
 0018  CTC.C0        0019  CTC.C1        001a  CTC.C2        001b  CTC.C3    
-00c1  ERROR_HALT    007a  FAULT_55      009f  FAULT_AA      0010  FDC.CS    
-0011  FDC.CY        0013  FDC.DA        0012  FDC.SE        0016  LEN1      
-0003  LEN_00        0003  LEN_01        0003  LEN_02        0003  LEN_03    
-0003  LEN_04        0003  LEN_05        0003  LEN_06        0003  LEN_07    
-0003  LEN_10        0003  LEN_11        0003  LEN_12        0003  LEN_13    
-0003  LEN_14        0003  LEN_15        0003  LEN_16        0003  LEN_17    
-0003  LEN_20        0003  LEN_21        0003  LEN_22        0003  LEN_23    
-0003  LEN_24        0003  LEN_25        0003  LEN_26        0003  LEN_27    
-0003  LEN_30        0003  LEN_31        0003  LEN_32        0003  LEN_33    
-0003  LEN_34        0003  LEN_35        0003  LEN_36        0003  LEN_37    
-0005  LEN_ERR       000b  LEN_OK        3000  LINE1         3080  LINE2     
+0083  FAULT         0010  FDC.CS        0011  FDC.CY        0013  FDC.DA    
+0012  FDC.SE        03e5  FNL00         03d8  FNL01         03cb  FNL02     
+03be  FNL03         03b1  FNL04         03a4  FNL05         0397  FNL06     
+038a  FNL07         0387  FNL0X         037a  FNL10         036d  FNL11     
+0360  FNL12         0353  FNL13         0346  FNL14         0339  FNL15     
+032c  FNL16         031f  FNL17         031c  FNL1X         030f  FNL20     
+0302  FNL21         02f5  FNL22         02e8  FNL23         02db  FNL24     
+02ce  FNL25         02c1  FNL26         02b4  FNL27         02b1  FNL2X     
+02a4  FNL30         0297  FNL31         028a  FNL32         027d  FNL33     
+0270  FNL34         0263  FNL35         0256  FNL36         0249  FNL37     
+0243  FNL3X         03f2  FNLXX         009c  GOT_COL       0016  LEN1      
+0005  LEN_ERR       0006  LEN_OK        3000  LINE1         3080  LINE2     
 3100  LINE3         3180  LINE4         3200  LINE5         3280  LINE6     
-007f  LOOP_55       00a4  LOOP_AA       00fc  MSG1          01aa  MSG_00    
-01ad  MSG_01        01b0  MSG_02        01b3  MSG_03        01b6  MSG_04    
-01b9  MSG_05        01bc  MSG_06        01bf  MSG_07        0192  MSG_10    
-0195  MSG_11        0198  MSG_12        019b  MSG_13        019e  MSG_14    
-01a1  MSG_15        01a4  MSG_16        01a7  MSG_17        017a  MSG_20    
-017d  MSG_21        0180  MSG_22        0183  MSG_23        0186  MSG_24    
-0189  MSG_25        018c  MSG_26        018f  MSG_27        0162  MSG_30    
-0165  MSG_31        0168  MSG_32        016b  MSG_33        016e  MSG_34    
-0171  MSG_35        0174  MSG_36        0177  MSG_37        0122  MSG_ADDR_TABLE
-011d  MSG_ERR       0112  MSG_OK        0008  PIO.AD        0009  PIO.AS    
-000a  PIO.BD        000b  PIO.BS        001f  PIO.KC        001e  PIO.KD    
-001d  PIO.SC        001c  PIO.SD        3c00  RAM_LOW       ffff  RAM_TOP   
-009b  ROW_FOUND_55    00c0  ROW_FOUND_AA    0004  SIO.AD        0006  SIO.AS    
-0005  SIO.BD        0007  SIO.BS        0004  SIO.CD        0006  SIO.CS    
-cfff  SP_TOP        0000  START         00ee  SUCCESS_HALT    002d  TEST_55   
-0052  TEST_AA       0c00  VRAM_SZ       0034  WRITE_55      0059  WRITE_AA  
+040f  MSG1          04b8  MSG_00        04bb  MSG_01        04be  MSG_02    
+04c1  MSG_03        04c4  MSG_04        04c7  MSG_05        04ca  MSG_06    
+04cd  MSG_07        04a0  MSG_10        04a3  MSG_11        04a6  MSG_12    
+04a9  MSG_13        04ac  MSG_14        04af  MSG_15        04b2  MSG_16    
+04b5  MSG_17        0488  MSG_20        048b  MSG_21        048e  MSG_22    
+0491  MSG_23        0494  MSG_24        0497  MSG_25        049a  MSG_26    
+049d  MSG_27        0470  MSG_30        0473  MSG_31        0476  MSG_32    
+0479  MSG_33        047c  MSG_34        047f  MSG_35        0482  MSG_36    
+0485  MSG_37        0430  MSG_ADDR_TABLE    042b  MSG_ERR       0425  MSG_OK    
+0008  PIO.AD        0009  PIO.AS        000a  PIO.BD        000b  PIO.BS    
+001f  PIO.KC        001e  PIO.KD        001d  PIO.SC        001c  PIO.SD    
+3c00  RAM_LOW       ffff  RAM_TOP       023d  REPORT        00aa  ROW_10    
+00a1  ROW_32        0004  SIO.AD        0006  SIO.AS        0005  SIO.BD    
+0007  SIO.BS        0004  SIO.CD        0006  SIO.CS        cfff  SP_TOP    
+0000  START         0400  SUCCESS       0036  TEST_55       005b  TEST_AA   
+0c00  VRAM_SZ       00b1  WBMAP         00f0  WBP0          00fc  WBP1      
+0159  WBP10         0164  WBP11         016b  WBP12         0177  WBP13     
+0182  WBP14         018d  WBP15         0194  WBP16         01a0  WBP17     
+01ab  WBP18         01b6  WBP19         0107  WBP2          01bd  WBP20     
+01c9  WBP21         01d4  WBP22         01df  WBP23         01e6  WBP24     
+01f2  WBP25         01fd  WBP26         0208  WBP27         020f  WBP28     
+021b  WBP29         0112  WBP3          0226  WBP30         0231  WBP31     
+0119  WBP4          0125  WBP5          0130  WBP6          013b  WBP7      
+0142  WBP8          014e  WBP9          0238  WBPXX         00c5  WBX1      
+00d6  WBX2          00de  WBX3          00e9  WBX4          003d  WRITE_55  
+0062  WRITE_AA      
 
